@@ -1,8 +1,8 @@
 using TMPro;
-using UnityEngine;
-using UnityEngine.UI;
 using System.Collections.Generic;
 using System.Linq;
+using UnityEngine;
+using UnityEngine.UI;
 
 public sealed class TunerPanelController : MonoBehaviour
 {
@@ -36,6 +36,8 @@ public sealed class TunerPanelController : MonoBehaviour
     private Button sourceToggleButton;
     private readonly List<Button> fluteKeyButtons = new List<Button>();
     private readonly List<TextMeshProUGUI> fluteKeyButtonLabels = new List<TextMeshProUGUI>();
+    private RectTransform fluteKeyButtonRoot;
+    private RectTransform fluteKeyButtonContent;
     private Button tongueFiveButton;
     private Button tongueTwoButton;
     private readonly List<Button> lowOptionButtons = new List<Button>();
@@ -53,7 +55,7 @@ public sealed class TunerPanelController : MonoBehaviour
 
     private TunerMode currentMode = TunerMode.Listening;
     private TongueMode currentTongueMode = TongueMode.Five;
-    private int fluteKeyIndex;
+    private int fluteKeyIndex = BambooFluteTargetLibrary.DefaultFluteKeyIndex;
     private int selectedOptionIndex = 4;
     private IReadOnlyList<TargetNoteOption> currentOptions;
 
@@ -85,6 +87,7 @@ public sealed class TunerPanelController : MonoBehaviour
         targetTabImage = targetTabButton.GetComponent<Image>();
         listeningPage = FindRequiredChild("Card/ListeningPage").gameObject;
         targetPage = FindRequiredChild("Card/TargetPage").gameObject;
+        fluteKeyButtonRoot = FindRequiredChild("Card/TargetPage/FluteKeyButtons") as RectTransform;
         tongueFiveButton = FindRequiredButton("Card/TargetPage/ToneFiveButton");
         tongueTwoButton = FindRequiredButton("Card/TargetPage/ToneTwoButton");
         lowRow = FindRequiredChild("Card/TargetPage/LowRow/Track") as RectTransform;
@@ -98,13 +101,7 @@ public sealed class TunerPanelController : MonoBehaviour
         tongueFiveButton.onClick.AddListener(() => SetTongueMode(TongueMode.Five));
         tongueTwoButton.onClick.AddListener(() => SetTongueMode(TongueMode.Two));
 
-        for (int i = 0; i < BambooFluteTargetLibrary.GetFluteKeyLabels().Count; i++)
-        {
-            fluteKeyButtons.Add(FindRequiredButton($"Card/TargetPage/FluteKeyButtons/Key{i + 1}"));
-            fluteKeyButtonLabels.Add(FindLabel($"Card/TargetPage/FluteKeyButtons/Key{i + 1}/Label"));
-            int keyIndex = i;
-            fluteKeyButtons[i].onClick.AddListener(() => SelectFluteKey(keyIndex));
-        }
+        SetupFluteKeyButtons();
 
         BindRow("Card/TargetPage/LowRow/Track", lowOptionButtons, lowTopLabels, lowBottomLabels, RegisterBand.Low);
         BindRow("Card/TargetPage/MidRow/Track", midOptionButtons, midTopLabels, midBottomLabels, RegisterBand.Mid);
@@ -255,6 +252,191 @@ public sealed class TunerPanelController : MonoBehaviour
             fluteKeyButtonLabels[i].color = selected ? new Color(0.12f, 0.18f, 0.16f, 1f) : new Color(0.94f, 0.9f, 0.82f, 1f);
         }
         RefreshTargetSelectionUi();
+    }
+
+    private void SetupFluteKeyButtons()
+    {
+        if (fluteKeyButtonRoot == null)
+        {
+            return;
+        }
+
+        IReadOnlyList<string> fluteLabels = BambooFluteTargetLibrary.GetFluteKeyLabels();
+        Button templateButton = FindTemplateFluteKeyButton();
+        TextMeshProUGUI templateLabel = templateButton != null ? templateButton.transform.Find("Label")?.GetComponent<TextMeshProUGUI>() : null;
+
+        EnsureFluteKeyScroller();
+
+        for (int i = fluteKeyButtonContent.childCount - 1; i >= 0; i--)
+        {
+            Destroy(fluteKeyButtonContent.GetChild(i).gameObject);
+        }
+
+        fluteKeyButtons.Clear();
+        fluteKeyButtonLabels.Clear();
+
+        const float buttonWidth = 160f;
+        const float buttonHeight = 60f;
+        const float buttonGap = 20f;
+
+        for (int i = 0; i < fluteLabels.Count; i++)
+        {
+            Button button = CreateRuntimeFluteKeyButton(fluteKeyButtonContent, templateLabel != null ? templateLabel.font : micStatusLabel.font);
+
+            button.name = $"Key{i + 1}";
+            button.onClick.RemoveAllListeners();
+
+            RectTransform buttonRect = button.GetComponent<RectTransform>();
+            buttonRect.anchorMin = new Vector2(0f, 0.5f);
+            buttonRect.anchorMax = new Vector2(0f, 0.5f);
+            buttonRect.pivot = new Vector2(0f, 0.5f);
+            buttonRect.anchoredPosition = new Vector2(i * (buttonWidth + buttonGap), 0f);
+            buttonRect.sizeDelta = new Vector2(buttonWidth, buttonHeight);
+
+            TextMeshProUGUI label = button.transform.Find("Label")?.GetComponent<TextMeshProUGUI>();
+            if (label == null)
+            {
+                label = CreateRuntimeFluteKeyLabel(button.transform, templateLabel != null ? templateLabel.font : micStatusLabel.font);
+            }
+
+            int keyIndex = i;
+            button.onClick.AddListener(() => SelectFluteKey(keyIndex));
+            fluteKeyButtons.Add(button);
+            fluteKeyButtonLabels.Add(label);
+        }
+
+        float contentWidth = fluteLabels.Count * buttonWidth + Mathf.Max(0, fluteLabels.Count - 1) * buttonGap;
+        fluteKeyButtonContent.anchorMin = new Vector2(0f, 0f);
+        fluteKeyButtonContent.anchorMax = new Vector2(0f, 1f);
+        fluteKeyButtonContent.pivot = new Vector2(0f, 0.5f);
+        fluteKeyButtonContent.anchoredPosition = Vector2.zero;
+        fluteKeyButtonContent.sizeDelta = new Vector2(contentWidth, 0f);
+    }
+
+    private void EnsureFluteKeyScroller()
+    {
+        Transform viewportTransform = fluteKeyButtonRoot.Find("Viewport");
+        RectTransform viewport;
+        if (viewportTransform == null)
+        {
+            GameObject viewportGo = new GameObject("Viewport", typeof(RectTransform), typeof(RectMask2D));
+            viewportGo.transform.SetParent(fluteKeyButtonRoot, false);
+            viewport = viewportGo.GetComponent<RectTransform>();
+            viewport.anchorMin = Vector2.zero;
+            viewport.anchorMax = Vector2.one;
+            viewport.offsetMin = Vector2.zero;
+            viewport.offsetMax = Vector2.zero;
+
+            List<Transform> childrenToMove = new List<Transform>();
+            for (int i = 0; i < fluteKeyButtonRoot.childCount; i++)
+            {
+                Transform child = fluteKeyButtonRoot.GetChild(i);
+                if (child != viewport)
+                {
+                    childrenToMove.Add(child);
+                }
+            }
+
+            GameObject contentGo = new GameObject("Content", typeof(RectTransform));
+            contentGo.transform.SetParent(viewport, false);
+            fluteKeyButtonContent = contentGo.GetComponent<RectTransform>();
+
+            foreach (Transform child in childrenToMove)
+            {
+                child.SetParent(fluteKeyButtonContent, false);
+            }
+        }
+        else
+        {
+            viewport = viewportTransform as RectTransform;
+            Transform contentTransform = viewport.Find("Content");
+            if (contentTransform == null)
+            {
+                GameObject contentGo = new GameObject("Content", typeof(RectTransform));
+                contentGo.transform.SetParent(viewport, false);
+                fluteKeyButtonContent = contentGo.GetComponent<RectTransform>();
+
+                List<Transform> childrenToMove = new List<Transform>();
+                for (int i = 0; i < fluteKeyButtonRoot.childCount; i++)
+                {
+                    Transform child = fluteKeyButtonRoot.GetChild(i);
+                    if (child != viewport)
+                    {
+                        childrenToMove.Add(child);
+                    }
+                }
+
+                foreach (Transform child in childrenToMove)
+                {
+                    child.SetParent(fluteKeyButtonContent, false);
+                }
+            }
+            else
+            {
+                fluteKeyButtonContent = contentTransform as RectTransform;
+            }
+        }
+
+        ScrollRect scrollRect = fluteKeyButtonRoot.GetComponent<ScrollRect>();
+        if (scrollRect == null)
+        {
+            scrollRect = fluteKeyButtonRoot.gameObject.AddComponent<ScrollRect>();
+        }
+
+        scrollRect.horizontal = true;
+        scrollRect.vertical = false;
+        scrollRect.movementType = ScrollRect.MovementType.Clamped;
+        scrollRect.inertia = true;
+        scrollRect.scrollSensitivity = 24f;
+        scrollRect.viewport = viewport;
+        scrollRect.content = fluteKeyButtonContent;
+        scrollRect.horizontalScrollbar = null;
+        scrollRect.verticalScrollbar = null;
+    }
+
+    private Button FindTemplateFluteKeyButton()
+    {
+        if (fluteKeyButtonRoot == null)
+        {
+            return null;
+        }
+
+        Button template = fluteKeyButtonRoot.GetComponentInChildren<Button>(true);
+        return template;
+    }
+
+    private Button CreateRuntimeFluteKeyButton(Transform parent, TMP_FontAsset font)
+    {
+        GameObject buttonGo = new GameObject("Key", typeof(RectTransform), typeof(Image), typeof(Button));
+        buttonGo.transform.SetParent(parent, false);
+
+        Image buttonImage = buttonGo.GetComponent<Image>();
+        buttonImage.color = new Color(1f, 1f, 1f, 0.08f);
+
+        Button button = buttonGo.GetComponent<Button>();
+        button.targetGraphic = buttonImage;
+
+        CreateRuntimeFluteKeyLabel(buttonGo.transform, font);
+        return button;
+    }
+
+    private TextMeshProUGUI CreateRuntimeFluteKeyLabel(Transform parent, TMP_FontAsset font)
+    {
+        GameObject labelGo = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
+        labelGo.transform.SetParent(parent, false);
+
+        RectTransform labelRect = labelGo.GetComponent<RectTransform>();
+        labelRect.anchorMin = Vector2.zero;
+        labelRect.anchorMax = Vector2.one;
+        labelRect.offsetMin = Vector2.zero;
+        labelRect.offsetMax = Vector2.zero;
+
+        TextMeshProUGUI label = labelGo.GetComponent<TextMeshProUGUI>();
+        label.font = font;
+        label.fontSize = 26f;
+        label.alignment = TextAlignmentOptions.Center;
+        label.color = softTextColor;
+        return label;
     }
 
     private void RefreshTargetSelectionUi()

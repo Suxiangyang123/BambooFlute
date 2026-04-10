@@ -38,6 +38,8 @@ public sealed class MicrophonePitchTracker : MonoBehaviour
     [SerializeField] private float yinThreshold = 0.12f;
     [SerializeField] private float minSignalRms = 0.008f;
     [SerializeField] private int smoothingWindow = 5;
+    [SerializeField] private int maxSubharmonicDivisor = 4;
+    [SerializeField] private float candidateSelectionTolerance = 0.92f;
 
     private readonly Queue<float> smoothedFrequencies = new Queue<float>();
 
@@ -129,7 +131,8 @@ public sealed class MicrophonePitchTracker : MonoBehaviour
             return;
         }
 
-        float smoothedFrequency = SmoothFrequency(result.Frequency);
+        float refinedFrequency = RefineFrequencyWithSubharmonics(result.Frequency);
+        float smoothedFrequency = SmoothFrequency(refinedFrequency);
         CurrentFrame = new PitchFrame(true, true, rms, smoothedFrequency, result.Clarity, PitchMath.GetNearestNote(smoothedFrequency));
     }
 
@@ -250,5 +253,115 @@ public sealed class MicrophonePitchTracker : MonoBehaviour
         }
 
         return Mathf.Sqrt(sum / samples.Length);
+    }
+
+    private float RefineFrequencyWithSubharmonics(float detectedFrequency)
+    {
+        float bestFrequency = detectedFrequency;
+        float bestScore = ScoreFundamentalCandidate(detectedFrequency);
+        if (bestScore <= 0f)
+        {
+            return detectedFrequency;
+        }
+
+        for (int divisor = 2; divisor <= maxSubharmonicDivisor; divisor++)
+        {
+            float candidateFrequency = detectedFrequency / divisor;
+            if (candidateFrequency < minFrequency)
+            {
+                continue;
+            }
+
+            float candidateScore = ScoreFundamentalCandidate(candidateFrequency);
+            if (candidateScore < bestScore * candidateSelectionTolerance)
+            {
+                continue;
+            }
+
+            if (candidateScore > bestScore)
+            {
+                bestFrequency = candidateFrequency;
+                bestScore = candidateScore;
+            }
+        }
+
+        return bestFrequency;
+    }
+
+    private float ScoreFundamentalCandidate(float frequency)
+    {
+        if (frequency <= 0f)
+        {
+            return 0f;
+        }
+
+        float[] harmonicWeights = { 1f, 0.85f, 0.65f, 0.45f };
+        float totalScore = 0f;
+        float totalWeight = 0f;
+
+        for (int harmonic = 1; harmonic <= harmonicWeights.Length; harmonic++)
+        {
+            float harmonicFrequency = frequency * harmonic;
+            if (harmonicFrequency > maxFrequency * 1.05f)
+            {
+                break;
+            }
+
+            float weight = harmonicWeights[harmonic - 1];
+            totalScore += MeasureFrequencyStrength(harmonicFrequency) * weight;
+            totalWeight += weight;
+        }
+
+        if (totalWeight <= 0f)
+        {
+            return 0f;
+        }
+
+        return totalScore / totalWeight;
+    }
+
+    private float MeasureFrequencyStrength(float frequency)
+    {
+        if (frequency <= 0f)
+        {
+            return 0f;
+        }
+
+        float center = MeasureSingleFrequencyStrength(frequency);
+        float lowerSide = MeasureSingleFrequencyStrength(frequency * 0.985f);
+        float upperSide = MeasureSingleFrequencyStrength(frequency * 1.015f);
+        return Mathf.Max(center, Mathf.Max(lowerSide, upperSide));
+    }
+
+    private float MeasureSingleFrequencyStrength(float frequency)
+    {
+        if (frequency <= 0f)
+        {
+            return 0f;
+        }
+
+        float sampleRate = detectorSampleRate > 0 ? detectorSampleRate : requestedSampleRate;
+        float angularStep = 2f * Mathf.PI * frequency / sampleRate;
+        float stepCosine = Mathf.Cos(angularStep);
+        float stepSine = Mathf.Sin(angularStep);
+        float cosine = 1f;
+        float sine = 0f;
+        float real = 0f;
+        float imaginary = 0f;
+
+        for (int i = 0; i < analysisSamples.Length; i++)
+        {
+            float window = 0.5f - 0.5f * Mathf.Cos(2f * Mathf.PI * i / (analysisSamples.Length - 1));
+            float sample = analysisSamples[i] * window;
+            real += sample * cosine;
+            imaginary -= sample * sine;
+
+            float nextRealBase = cosine * stepCosine - sine * stepSine;
+            float nextImaginaryBase = sine * stepCosine + cosine * stepSine;
+            cosine = nextRealBase;
+            sine = nextImaginaryBase;
+        }
+
+        return Mathf.Sqrt(real * real + imaginary * imaginary) / analysisSamples.Length;
     }
 }
