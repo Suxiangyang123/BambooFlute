@@ -35,16 +35,16 @@ public readonly struct TargetNoteOption
     public string DegreeLabel { get; }
     public string PitchLabel { get; }
     public float Frequency { get; }
-    public string DisplayLabel => $"{RegisterText(RegisterBand)}{DegreeLabel}  {PitchLabel}";
-    public string CompactLabel => $"{DegreeLabel}";
+    public string DisplayLabel => $"{GetRegisterText(RegisterBand)}音 {DegreeLabel}  {PitchLabel}";
+    public string CompactLabel => DegreeLabel;
 
-    private static string RegisterText(RegisterBand band)
+    public static string GetRegisterText(RegisterBand band)
     {
         return band switch
         {
-            RegisterBand.Low => "低音",
-            RegisterBand.Mid => "中音",
-            _ => "高音",
+            RegisterBand.Low => "低",
+            RegisterBand.Mid => "中",
+            _ => "高",
         };
     }
 }
@@ -56,10 +56,9 @@ public static class BambooFluteTargetLibrary
     private static readonly int[] MajorScale = { 0, 2, 4, 5, 7, 9, 11 };
     private static readonly string[] DegreeTexts = { "1", "2", "3", "4", "5", "6", "7" };
     private static readonly int[] ToneTwoDegreeMap = { 5, 6, 7, 1, 2, 3, 4 };
-    private static readonly TargetDescriptor[] Targets = BuildTargets();
+    private static readonly TargetDescriptor[] Targets = CreateTargets();
 
     public static int FluteKeyCount => FluteKeys.Length;
-
     public static int DefaultFluteKeyIndex => Array.IndexOf(FluteKeys, "D调");
 
     public static string GetFluteKeyLabel(int index)
@@ -67,52 +66,47 @@ public static class BambooFluteTargetLibrary
         return FluteKeys[Mathf.Clamp(index, 0, FluteKeys.Length - 1)];
     }
 
-    public static IReadOnlyList<TargetNoteOption> BuildOptions(int fluteKeyIndex, TongueMode tongueMode)
-    {
-        fluteKeyIndex = Mathf.Clamp(fluteKeyIndex, 0, FluteKeys.Length - 1);
-        int baseDoMidi = BaseDoMidi[fluteKeyIndex];
-        TargetDescriptor[] descriptors = Targets;
-
-        List<TargetNoteOption> options = new List<TargetNoteOption>(descriptors.Length);
-        foreach (TargetDescriptor descriptor in descriptors)
-        {
-            int midi = GetMidiForDegree(baseDoMidi, descriptor.PitchDegree, descriptor.OctaveShift);
-            int displayDegree = GetDisplayDegree(descriptor.PitchDegree, tongueMode);
-            string noteName = PitchMath.GetNearestNote(PitchMath.MidiToFrequency(midi)).DisplayName;
-            options.Add(new TargetNoteOption(descriptor.RegisterBand, DegreeTexts[displayDegree - 1], noteName, PitchMath.MidiToFrequency(midi)));
-        }
-
-        return options;
-    }
-
     public static IReadOnlyList<string> GetFluteKeyLabels()
     {
         return FluteKeys;
     }
 
-    private static int GetMidiForDegree(int baseDoMidi, int degree, int octaveShift)
+    public static IReadOnlyList<TargetNoteOption> BuildOptions(int fluteKeyIndex, TongueMode tongueMode)
     {
-        int semitoneOffset = MajorScale[degree - 1];
-        return baseDoMidi + semitoneOffset + octaveShift * 12;
+        fluteKeyIndex = Mathf.Clamp(fluteKeyIndex, 0, FluteKeys.Length - 1);
+        int baseDoMidi = BaseDoMidi[fluteKeyIndex];
+        List<TargetNoteOption> options = new List<TargetNoteOption>(Targets.Length);
+
+        for (int i = 0; i < Targets.Length; i++)
+        {
+            TargetDescriptor descriptor = Targets[i];
+            int midi = GetMidiForDegree(baseDoMidi, descriptor.PitchDegree, descriptor.OctaveShift);
+            int displayDegree = GetDisplayDegree(descriptor.PitchDegree, tongueMode);
+            float frequency = PitchMath.MidiToFrequency(midi);
+            string noteName = PitchMath.GetNearestNote(frequency).DisplayName;
+            options.Add(new TargetNoteOption(descriptor.RegisterBand, DegreeTexts[displayDegree - 1], noteName, frequency));
+        }
+
+        return options;
     }
 
-    private static TargetDescriptor[] BuildTargets()
+    private static int GetMidiForDegree(int baseDoMidi, int degree, int octaveShift)
+    {
+        return baseDoMidi + MajorScale[degree - 1] + octaveShift * 12;
+    }
+
+    private static int GetDisplayDegree(int pitchDegree, TongueMode tongueMode)
+    {
+        return tongueMode == TongueMode.Five ? pitchDegree : ToneTwoDegreeMap[pitchDegree - 1];
+    }
+
+    private static TargetDescriptor[] CreateTargets()
     {
         List<TargetDescriptor> targets = new List<TargetDescriptor>(17);
         AddDegreeRange(targets, RegisterBand.Low, 5, 7, -1);
         AddDegreeRange(targets, RegisterBand.Mid, 1, 7, 0);
         AddDegreeRange(targets, RegisterBand.High, 1, 7, 1);
         return targets.ToArray();
-    }
-
-    private static int GetDisplayDegree(int pitchDegree, TongueMode tongueMode)
-    {
-        if (tongueMode == TongueMode.Five)
-        {
-            return pitchDegree;
-        }
-
-        return ToneTwoDegreeMap[pitchDegree - 1];
     }
 
     private static void AddDegreeRange(List<TargetDescriptor> targets, RegisterBand registerBand, int startDegree, int endDegree, int octaveShift)
