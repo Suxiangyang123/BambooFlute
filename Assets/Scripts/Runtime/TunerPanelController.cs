@@ -2,8 +2,6 @@ using System.Collections.Generic;
 using System.Linq;
 using TMPro;
 using UnityEngine;
-using UnityEngine.Events;
-using UnityEngine.TextCore.LowLevel;
 using UnityEngine.UI;
 
 public sealed class TunerPanelController : MonoBehaviour
@@ -25,7 +23,6 @@ public sealed class TunerPanelController : MonoBehaviour
 
     private MicrophonePitchTracker pitchTracker;
     private PracticeNavigationController navigationController;
-    private TMP_FontAsset uiFont;
 
     private TextMeshProUGUI noteLabel;
     private TextMeshProUGUI hintLabel;
@@ -102,7 +99,6 @@ public sealed class TunerPanelController : MonoBehaviour
     {
         pitchTracker = GetComponent<MicrophonePitchTracker>() ?? gameObject.AddComponent<MicrophonePitchTracker>();
         navigationController = FindAnyObjectByType<PracticeNavigationController>();
-        uiFont = CreateRuntimeFont();
 
         noteLabel = FindLabel("Content/Pages/TargetPage/NoteLabel");
         hintLabel = FindLabel("Content/Pages/TargetPage/HintLabel");
@@ -140,8 +136,6 @@ public sealed class TunerPanelController : MonoBehaviour
         targetTongueFiveButton.onClick.AddListener(() => SetTongueMode(TongueMode.Five));
         targetTongueTwoButton.onClick.AddListener(() => SetTongueMode(TongueMode.Two));
 
-        ApplyRuntimeFont();
-        ConfigureLegacyGaugeLayout();
         BindListeningUi();
         SetupFluteKeyButtons();
         BindRow("Content/Pages/TargetPage/TargetSelect/LowRow/Track", lowOptionButtons, lowTopLabels, lowBottomLabels, RegisterBand.Low);
@@ -412,63 +406,11 @@ public sealed class TunerPanelController : MonoBehaviour
             throw new MissingComponentException("Missing ListeningPitchTrailView on 'Content/Pages/ListeningPage/GraphCard/GraphViewport'.");
         }
 
-        trailView.Configure(uiFont);
-        BuildListeningKeyButtons();
-        return;
-
-        RectTransform page = listeningPage.GetComponent<RectTransform>();
-        listeningRoot = CreateRect("ListeningRoot", page, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
-
-        RectTransform topCard = CreatePanel("TopControls", listeningRoot, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -116f), new Vector2(-24f, 152f), new Color(0.12f, 0.18f, 0.2f, 0.92f));
-        topCard.offsetMin = new Vector2(24f, topCard.offsetMin.y);
-        CreateText("KeyTitle", topCard, "笛子调性", 22f, softTextColor, new Vector2(18f, -12f), new Vector2(180f, 28f), TextAlignmentOptions.Left);
-
-        RectTransform scrollerRoot = CreatePanel("KeyScroller", topCard, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -46f), new Vector2(-24f, 42f), dimCardColor);
-        scrollerRoot.offsetMin = new Vector2(18f, scrollerRoot.offsetMin.y);
-        RectTransform viewport = CreateRect("Viewport", scrollerRoot, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
-        viewport.gameObject.AddComponent<RectMask2D>();
-        keyScrollerContent = CreateRect("Content", viewport, new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(0f, 0.5f), Vector2.zero, Vector2.zero);
-        ScrollRect scrollRect = scrollerRoot.gameObject.AddComponent<ScrollRect>();
-        scrollRect.horizontal = true;
-        scrollRect.vertical = false;
-        scrollRect.movementType = ScrollRect.MovementType.Clamped;
-        scrollRect.scrollSensitivity = 20f;
-        scrollRect.viewport = viewport;
-        scrollRect.content = keyScrollerContent;
-
-        CreateText("TongueTitle", topCard, "筒音模式", 22f, softTextColor, new Vector2(18f, -100f), new Vector2(180f, 28f), TextAlignmentOptions.Left);
-        tongueFiveButton = CreateButton(topCard, "TongueFive", "筒音作5", new Vector2(18f, -132f), new Vector2(150f, 36f), () => SetTongueMode(TongueMode.Five));
-        tongueTwoButton = CreateButton(topCard, "TongueTwo", "筒音作2", new Vector2(180f, -132f), new Vector2(150f, 36f), () => SetTongueMode(TongueMode.Two));
-        tongueFiveLabel = tongueFiveButton.transform.Find("Label").GetComponent<TextMeshProUGUI>();
-        tongueTwoLabel = tongueTwoButton.transform.Find("Label").GetComponent<TextMeshProUGUI>();
-
-        listeningTitleLabel = CreateText("ListeningTitle", listeningRoot, "请开始吹奏", 28f, Color.white, new Vector2(24f, -590f), new Vector2(540f, 36f), TextAlignmentOptions.Left);
-
-        RectTransform summaryRow = CreateRect("SummaryRow", listeningRoot, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -634f), new Vector2(-24f, 110f));
-        summaryRow.offsetMin = new Vector2(24f, summaryRow.offsetMin.y);
-        CreateRegisterCard(summaryRow, RegisterBand.Low, 0);
-        CreateRegisterCard(summaryRow, RegisterBand.Mid, 1);
-        CreateRegisterCard(summaryRow, RegisterBand.High, 2);
-
-        RectTransform graphCard = CreatePanel("GraphCard", listeningRoot, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 68f), new Vector2(-24f, 286f), new Color(0.12f, 0.18f, 0.2f, 0.92f));
-        graphCard.offsetMin = new Vector2(24f, graphCard.offsetMin.y);
-        CreateText("GraphTitle", graphCard, "音高轨迹", 24f, Color.white, new Vector2(20f, -14f), new Vector2(180f, 28f), TextAlignmentOptions.Left);
-        CreateText("GraphHint", graphCard, "每段线都以当前最近目标音为中心", 18f, softTextColor, new Vector2(196f, -14f), new Vector2(420f, 24f), TextAlignmentOptions.Left);
-        CreateText("AxisTop", graphCard, "+35c", 16f, softTextColor, new Vector2(8f, -54f), new Vector2(46f, 18f), TextAlignmentOptions.Left);
-        CreateText("AxisUpper", graphCard, "+20c", 16f, softTextColor, new Vector2(8f, -96f), new Vector2(46f, 18f), TextAlignmentOptions.Left);
-        CreateText("AxisCenter", graphCard, "0c", 16f, Color.white, new Vector2(16f, -152f), new Vector2(38f, 18f), TextAlignmentOptions.Left);
-        CreateText("AxisLower", graphCard, "-20c", 16f, softTextColor, new Vector2(8f, -210f), new Vector2(46f, 18f), TextAlignmentOptions.Left);
-        CreateText("AxisBottom", graphCard, "-35c", 16f, softTextColor, new Vector2(8f, -252f), new Vector2(46f, 18f), TextAlignmentOptions.Left);
-
-        RectTransform graphViewport = CreatePanel("GraphViewport", graphCard, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 16f), new Vector2(-60f, 234f), new Color(0.05f, 0.09f, 0.12f, 1f));
-        graphViewport.offsetMin = new Vector2(54f, graphViewport.offsetMin.y);
-        trailView = graphViewport.gameObject.AddComponent<ListeningPitchTrailView>();
-        trailView.Configure(uiFont);
-
-        BuildListeningKeyButtons();
+        trailView.Configure(listeningTitleLabel.font);
+        BindListeningKeyButtons();
     }
 
-    private void BuildListeningKeyButtons()
+    private void BindListeningKeyButtons()
     {
         keyButtons.Clear();
         keyButtonLabels.Clear();
@@ -489,33 +431,6 @@ public sealed class TunerPanelController : MonoBehaviour
             keyButtons.Add(button);
             keyButtonLabels.Add(label);
         }
-
-        return;
-
-        for (int i = 0; i < keyScrollerContent.childCount; i++)
-        {
-            Destroy(keyScrollerContent.GetChild(i).gameObject);
-        }
-
-        keyButtons.Clear();
-        keyButtonLabels.Clear();
-
-        IReadOnlyList<string> labels = BambooFluteTargetLibrary.GetFluteKeyLabels();
-        const float buttonWidth = 110f;
-        const float gap = 12f;
-        for (int i = 0; i < labels.Count; i++)
-        {
-            int keyIndex = i;
-            Button button = CreateButton(keyScrollerContent, $"Key{keyIndex}", labels[i], new Vector2(i * (buttonWidth + gap), -2f), new Vector2(buttonWidth, 34f), () => SelectFluteKey(keyIndex));
-            RectTransform rect = button.GetComponent<RectTransform>();
-            rect.anchorMin = new Vector2(0f, 1f);
-            rect.anchorMax = new Vector2(0f, 1f);
-            rect.pivot = new Vector2(0f, 1f);
-            keyButtons.Add(button);
-            keyButtonLabels.Add(button.transform.Find("Label").GetComponent<TextMeshProUGUI>());
-        }
-
-        keyScrollerContent.sizeDelta = new Vector2(labels.Count * (buttonWidth + gap), 40f);
     }
 
     private void UpdateListeningKeyButtons()
@@ -547,19 +462,6 @@ public sealed class TunerPanelController : MonoBehaviour
             Title = FindLabel($"{path}/Title"),
             Main = FindLabel($"{path}/Main"),
             Detail = FindLabel($"{path}/Detail"),
-        };
-        registerSummary[band] = ui;
-    }
-
-    private void CreateRegisterCard(RectTransform parent, RegisterBand band, int index)
-    {
-        RectTransform cardRect = CreatePanel($"{band}Card", parent, new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(0f, 0.5f), new Vector2(index * 246f, 0f), new Vector2(228f, 120f), dimCardColor);
-        RegisterSummaryUi ui = new RegisterSummaryUi
-        {
-            Card = cardRect.GetComponent<Image>(),
-            Title = CreateText("Title", cardRect, $"{TargetNoteOption.GetRegisterText(band)}音", 22f, softTextColor, new Vector2(16f, -12f), new Vector2(120f, 26f), TextAlignmentOptions.Left),
-            Main = CreateText("Main", cardRect, "--", 34f, Color.white, new Vector2(16f, -44f), new Vector2(180f, 38f), TextAlignmentOptions.Left),
-            Detail = CreateText("Detail", cardRect, "等待输入", 18f, softTextColor, new Vector2(16f, -82f), new Vector2(180f, 22f), TextAlignmentOptions.Left),
         };
         registerSummary[band] = ui;
     }
@@ -605,183 +507,6 @@ public sealed class TunerPanelController : MonoBehaviour
             fluteKeyButtons.Add(button);
             fluteKeyButtonLabels.Add(label);
         }
-
-        return;
-
-        IReadOnlyList<string> fluteLabels = BambooFluteTargetLibrary.GetFluteKeyLabels();
-        Button templateButton = FindTemplateFluteKeyButton();
-        TextMeshProUGUI templateLabel = templateButton != null ? templateButton.transform.Find("Label")?.GetComponent<TextMeshProUGUI>() : null;
-
-        EnsureFluteKeyScroller();
-
-        for (int i = fluteKeyButtonContent.childCount - 1; i >= 0; i--)
-        {
-            Destroy(fluteKeyButtonContent.GetChild(i).gameObject);
-        }
-
-        fluteKeyButtons.Clear();
-        fluteKeyButtonLabels.Clear();
-
-        const float buttonWidth = 160f;
-        const float buttonHeight = 60f;
-        const float buttonGap = 20f;
-
-        for (int i = 0; i < fluteLabels.Count; i++)
-        {
-            Button button = CreateRuntimeFluteKeyButton(fluteKeyButtonContent, templateLabel != null ? templateLabel.font : micStatusLabel.font);
-            button.name = $"Key{i + 1}";
-            button.onClick.RemoveAllListeners();
-
-            RectTransform buttonRect = button.GetComponent<RectTransform>();
-            buttonRect.anchorMin = new Vector2(0f, 0.5f);
-            buttonRect.anchorMax = new Vector2(0f, 0.5f);
-            buttonRect.pivot = new Vector2(0f, 0.5f);
-            buttonRect.anchoredPosition = new Vector2(i * (buttonWidth + buttonGap), 0f);
-            buttonRect.sizeDelta = new Vector2(buttonWidth, buttonHeight);
-
-            TextMeshProUGUI label = button.transform.Find("Label")?.GetComponent<TextMeshProUGUI>();
-            if (label == null)
-            {
-                label = CreateRuntimeFluteKeyLabel(button.transform, templateLabel != null ? templateLabel.font : micStatusLabel.font);
-            }
-
-            int keyIndex = i;
-            button.onClick.AddListener(() => SelectFluteKey(keyIndex));
-            fluteKeyButtons.Add(button);
-            fluteKeyButtonLabels.Add(label);
-        }
-
-        float contentWidth = fluteLabels.Count * buttonWidth + Mathf.Max(0, fluteLabels.Count - 1) * buttonGap;
-        fluteKeyButtonContent.anchorMin = new Vector2(0f, 0f);
-        fluteKeyButtonContent.anchorMax = new Vector2(0f, 1f);
-        fluteKeyButtonContent.pivot = new Vector2(0f, 0.5f);
-        fluteKeyButtonContent.anchoredPosition = Vector2.zero;
-        fluteKeyButtonContent.sizeDelta = new Vector2(contentWidth, 0f);
-    }
-
-    private void EnsureFluteKeyScroller()
-    {
-        Transform viewportTransform = fluteKeyButtonRoot.Find("Viewport");
-        RectTransform viewport;
-        if (viewportTransform == null)
-        {
-            GameObject viewportGo = new GameObject("Viewport", typeof(RectTransform), typeof(RectMask2D));
-            viewportGo.transform.SetParent(fluteKeyButtonRoot, false);
-            viewport = viewportGo.GetComponent<RectTransform>();
-            viewport.anchorMin = Vector2.zero;
-            viewport.anchorMax = Vector2.one;
-            viewport.offsetMin = Vector2.zero;
-            viewport.offsetMax = Vector2.zero;
-
-            List<Transform> childrenToMove = new List<Transform>();
-            for (int i = 0; i < fluteKeyButtonRoot.childCount; i++)
-            {
-                Transform child = fluteKeyButtonRoot.GetChild(i);
-                if (child != viewport)
-                {
-                    childrenToMove.Add(child);
-                }
-            }
-
-            GameObject contentGo = new GameObject("Content", typeof(RectTransform));
-            contentGo.transform.SetParent(viewport, false);
-            fluteKeyButtonContent = contentGo.GetComponent<RectTransform>();
-
-            foreach (Transform child in childrenToMove)
-            {
-                child.SetParent(fluteKeyButtonContent, false);
-            }
-        }
-        else
-        {
-            viewport = viewportTransform as RectTransform;
-            Transform contentTransform = viewport.Find("Content");
-            if (contentTransform == null)
-            {
-                GameObject contentGo = new GameObject("Content", typeof(RectTransform));
-                contentGo.transform.SetParent(viewport, false);
-                fluteKeyButtonContent = contentGo.GetComponent<RectTransform>();
-
-                List<Transform> childrenToMove = new List<Transform>();
-                for (int i = 0; i < fluteKeyButtonRoot.childCount; i++)
-                {
-                    Transform child = fluteKeyButtonRoot.GetChild(i);
-                    if (child != viewport)
-                    {
-                        childrenToMove.Add(child);
-                    }
-                }
-
-                foreach (Transform child in childrenToMove)
-                {
-                    child.SetParent(fluteKeyButtonContent, false);
-                }
-            }
-            else
-            {
-                fluteKeyButtonContent = contentTransform as RectTransform;
-            }
-        }
-
-        ScrollRect scrollRect = fluteKeyButtonRoot.GetComponent<ScrollRect>();
-        if (scrollRect == null)
-        {
-            scrollRect = fluteKeyButtonRoot.gameObject.AddComponent<ScrollRect>();
-        }
-
-        scrollRect.horizontal = true;
-        scrollRect.vertical = false;
-        scrollRect.movementType = ScrollRect.MovementType.Clamped;
-        scrollRect.inertia = true;
-        scrollRect.scrollSensitivity = 24f;
-        scrollRect.viewport = viewport;
-        scrollRect.content = fluteKeyButtonContent;
-        scrollRect.horizontalScrollbar = null;
-        scrollRect.verticalScrollbar = null;
-    }
-
-    private Button FindTemplateFluteKeyButton()
-    {
-        if (fluteKeyButtonRoot == null)
-        {
-            return null;
-        }
-
-        return fluteKeyButtonRoot.GetComponentInChildren<Button>(true);
-    }
-
-    private Button CreateRuntimeFluteKeyButton(Transform parent, TMP_FontAsset font)
-    {
-        GameObject buttonGo = new GameObject("Key", typeof(RectTransform), typeof(Image), typeof(Button));
-        buttonGo.transform.SetParent(parent, false);
-
-        Image buttonImage = buttonGo.GetComponent<Image>();
-        buttonImage.color = new Color(1f, 1f, 1f, 0.08f);
-
-        Button button = buttonGo.GetComponent<Button>();
-        button.targetGraphic = buttonImage;
-
-        CreateRuntimeFluteKeyLabel(buttonGo.transform, font);
-        return button;
-    }
-
-    private TextMeshProUGUI CreateRuntimeFluteKeyLabel(Transform parent, TMP_FontAsset font)
-    {
-        GameObject labelGo = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
-        labelGo.transform.SetParent(parent, false);
-
-        RectTransform labelRect = labelGo.GetComponent<RectTransform>();
-        labelRect.anchorMin = Vector2.zero;
-        labelRect.anchorMax = Vector2.one;
-        labelRect.offsetMin = Vector2.zero;
-        labelRect.offsetMax = Vector2.zero;
-
-        TextMeshProUGUI label = labelGo.GetComponent<TextMeshProUGUI>();
-        label.font = font;
-        label.fontSize = 26f;
-        label.alignment = TextAlignmentOptions.Center;
-        label.color = softTextColor;
-        return label;
     }
 
     private void UpdateTargetKeyButtons()
@@ -967,59 +692,6 @@ public sealed class TunerPanelController : MonoBehaviour
         return pitchTracker.IsReady ? "请开始吹奏长音" : "等待麦克风";
     }
 
-    private TMP_FontAsset CreateRuntimeFont()
-    {
-        Font resourceFont = Resources.Load<Font>("SourceHanSansCN-Regular");
-        if (resourceFont == null)
-        {
-            return micStatusLabel != null ? micStatusLabel.font : null;
-        }
-
-        return TMP_FontAsset.CreateFontAsset(resourceFont, 90, 9, GlyphRenderMode.SDFAA, 1024, 1024, AtlasPopulationMode.Dynamic, true);
-    }
-
-    private void ApplyRuntimeFont()
-    {
-        if (uiFont == null)
-        {
-            return;
-        }
-
-        TextMeshProUGUI[] labels = GetComponentsInChildren<TextMeshProUGUI>(true);
-        for (int i = 0; i < labels.Length; i++)
-        {
-            labels[i].font = uiFont;
-        }
-    }
-
-    private void ConfigureLegacyGaugeLayout()
-    {
-        if (uiFont == null)
-        {
-            return;
-        }
-
-        noteLabel.font = uiFont;
-        hintLabel.font = uiFont;
-        frequencyLabel.font = uiFont;
-        centsLabel.font = uiFont;
-        targetLabel.font = uiFont;
-        targetFrequencyLabel.font = uiFont;
-        currentNoteNameLabel.font = uiFont;
-        currentFrequencyLabel.font = uiFont;
-        registerHintLabel.font = uiFont;
-    }
-
-    private void SetTextRect(RectTransform rect, Vector2 anchoredPosition, Vector2 size, Vector2? pivotOverride = null)
-    {
-        Vector2 pivot = pivotOverride ?? new Vector2(0.5f, 1f);
-        rect.anchorMin = new Vector2(pivot.x, 1f);
-        rect.anchorMax = new Vector2(pivot.x, 1f);
-        rect.pivot = pivot;
-        rect.anchoredPosition = anchoredPosition;
-        rect.sizeDelta = size;
-    }
-
     private void EnsureSourceToggleButton()
     {
         Transform existing = transform.Find("Content/SourceToggleButton");
@@ -1134,100 +806,4 @@ public sealed class TunerPanelController : MonoBehaviour
         return target;
     }
 
-    private RectTransform CreateRect(string name, Transform parent, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 anchoredPosition, Vector2 sizeDelta)
-    {
-        GameObject go = new GameObject(name, typeof(RectTransform));
-        go.transform.SetParent(parent, false);
-        RectTransform rect = go.GetComponent<RectTransform>();
-        rect.anchorMin = anchorMin;
-        rect.anchorMax = anchorMax;
-        rect.pivot = pivot;
-        rect.anchoredPosition = anchoredPosition;
-        rect.sizeDelta = sizeDelta;
-        return rect;
-    }
-
-    private RectTransform CreatePanel(string name, Transform parent, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 anchoredPosition, Vector2 sizeDelta, Color color)
-    {
-        GameObject go = new GameObject(name, typeof(RectTransform), typeof(Image));
-        go.transform.SetParent(parent, false);
-        RectTransform rect = go.GetComponent<RectTransform>();
-        rect.anchorMin = anchorMin;
-        rect.anchorMax = anchorMax;
-        rect.pivot = pivot;
-        rect.anchoredPosition = anchoredPosition;
-        rect.sizeDelta = sizeDelta;
-        go.GetComponent<Image>().color = color;
-        return rect;
-    }
-
-    private TextMeshProUGUI CreateText(string name, RectTransform parent, string text, float fontSize, Color color, Vector2 anchoredPosition, Vector2 size, TextAlignmentOptions alignment)
-    {
-        GameObject go = new GameObject(name, typeof(RectTransform), typeof(TextMeshProUGUI));
-        go.transform.SetParent(parent, false);
-        RectTransform rect = go.GetComponent<RectTransform>();
-        rect.anchorMin = new Vector2(0f, 1f);
-        rect.anchorMax = new Vector2(0f, 1f);
-        rect.pivot = new Vector2(0f, 1f);
-        rect.anchoredPosition = anchoredPosition;
-        rect.sizeDelta = size;
-
-        TextMeshProUGUI label = go.GetComponent<TextMeshProUGUI>();
-        label.font = uiFont;
-        label.fontSize = fontSize;
-        label.color = color;
-        label.text = text;
-        label.alignment = alignment;
-        return label;
-    }
-
-    private Button CreateButton(RectTransform parent, string name, string text, Vector2 anchoredPosition, Vector2 size, UnityAction onClick)
-    {
-        return CreateButton(parent, name, text, new Vector2(0f, 1f), anchoredPosition, size, onClick);
-    }
-
-    private Button CreateButton(RectTransform parent, string name, string text, Vector2 anchor, Vector2 anchoredPosition, Vector2 size, UnityAction onClick)
-    {
-        GameObject go = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
-        go.transform.SetParent(parent, false);
-        RectTransform rect = go.GetComponent<RectTransform>();
-        rect.anchorMin = anchor;
-        rect.anchorMax = anchor;
-        rect.pivot = anchor;
-        rect.anchoredPosition = anchoredPosition;
-        rect.sizeDelta = size;
-
-        Image image = go.GetComponent<Image>();
-        image.color = dimCardColor;
-
-        Button button = go.GetComponent<Button>();
-        button.targetGraphic = image;
-        if (onClick != null)
-        {
-            button.onClick.AddListener(onClick);
-        }
-
-        CreateFillLabel(rect, text);
-        return button;
-    }
-
-    private TextMeshProUGUI CreateFillLabel(RectTransform parent, string text)
-    {
-        GameObject go = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
-        go.transform.SetParent(parent, false);
-        RectTransform rect = go.GetComponent<RectTransform>();
-        rect.anchorMin = Vector2.zero;
-        rect.anchorMax = Vector2.one;
-        rect.offsetMin = Vector2.zero;
-        rect.offsetMax = Vector2.zero;
-
-        TextMeshProUGUI label = go.GetComponent<TextMeshProUGUI>();
-        label.font = uiFont;
-        label.fontSize = 22f;
-        label.alignment = TextAlignmentOptions.Center;
-        label.text = text;
-        label.color = Color.white;
-        label.fontStyle = FontStyles.Bold;
-        return label;
-    }
 }
