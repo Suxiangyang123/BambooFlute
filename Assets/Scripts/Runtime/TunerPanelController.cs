@@ -38,7 +38,8 @@ public sealed class TunerPanelController : MonoBehaviour
     private TextMeshProUGUI currentFrequencyLabel;
     private TextMeshProUGUI registerHintLabel;
     private TextMeshProUGUI sourceToggleLabel;
-    private RectTransform needlePivot;
+    private RectTransform listeningNeedlePivot;
+    private RectTransform targetNeedlePivot;
     private Button listeningTabButton;
     private Button targetTabButton;
     private Image listeningTabImage;
@@ -103,33 +104,34 @@ public sealed class TunerPanelController : MonoBehaviour
         navigationController = FindAnyObjectByType<PracticeNavigationController>();
         uiFont = CreateRuntimeFont();
 
-        noteLabel = FindLabel("Card/NoteLabel");
-        hintLabel = FindLabel("Card/HintLabel");
-        frequencyLabel = FindLabel("Card/FrequencyLabel");
-        centsLabel = FindLabel("Card/CentsLabel");
-        targetLabel = FindLabel("Card/TargetLabel");
-        micStatusLabel = FindLabel("Card/MicStatusLabel");
-        targetFrequencyLabel = FindLabel("Card/TargetFrequencyLabel");
-        currentNoteNameLabel = FindLabel("Card/CurrentNoteNameLabel");
-        currentFrequencyLabel = FindLabel("Card/CurrentFrequencyLabel");
-        registerHintLabel = FindLabel("Card/RegisterHintLabel");
-        needlePivot = FindRequiredChild("Card/Gauge/NeedlePivot") as RectTransform;
+        noteLabel = FindLabel("Content/Pages/TargetPage/NoteLabel");
+        hintLabel = FindLabel("Content/Pages/TargetPage/HintLabel");
+        frequencyLabel = FindLabel("Content/Pages/TargetPage/FrequencyLabel");
+        centsLabel = FindLabel("Content/Pages/TargetPage/CentsLabel");
+        targetLabel = FindLabel("Content/Pages/TargetPage/TargetLabel");
+        micStatusLabel = FindLabel("Content/MicStatusLabel");
+        targetFrequencyLabel = FindLabel("Content/Pages/TargetPage/TargetFrequencyLabel");
+        currentNoteNameLabel = FindLabel("Content/Pages/TargetPage/CurrentNoteNameLabel");
+        currentFrequencyLabel = FindLabel("Content/Pages/TargetPage/CurrentFrequencyLabel");
+        registerHintLabel = FindLabel("Content/Pages/TargetPage/RegisterHintLabel");
+        listeningNeedlePivot = FindRequiredChild("Content/Pages/ListeningPage/Gauge/NeedlePivot") as RectTransform;
+        targetNeedlePivot = FindRequiredChild("Content/Pages/TargetPage/Gauge/NeedlePivot") as RectTransform;
 
-        listeningPage = FindRequiredChild("Card/ListeningPage").gameObject;
-        targetPage = FindRequiredChild("Card/TargetPage").gameObject;
-        listeningTabButton = FindRequiredButton("Card/TabRow/ListeningTab");
-        targetTabButton = FindRequiredButton("Card/TabRow/TargetTab");
+        listeningPage = FindRequiredChild("Content/Pages/ListeningPage").gameObject;
+        targetPage = FindRequiredChild("Content/Pages/TargetPage").gameObject;
+        listeningTabButton = FindRequiredButton("Content/TabRow/ListeningTab");
+        targetTabButton = FindRequiredButton("Content/TabRow/TargetTab");
         listeningTabImage = listeningTabButton.GetComponent<Image>();
         targetTabImage = targetTabButton.GetComponent<Image>();
 
-        fluteKeyButtonRoot = FindRequiredChild("Card/TargetPage/FluteKeyButtons") as RectTransform;
-        targetTongueFiveButton = FindRequiredButton("Card/TargetPage/ToneFiveButton");
-        targetTongueTwoButton = FindRequiredButton("Card/TargetPage/ToneTwoButton");
-        lowRow = FindRequiredChild("Card/TargetPage/LowRow/Track") as RectTransform;
-        midRow = FindRequiredChild("Card/TargetPage/MidRow/Track") as RectTransform;
-        highRow = FindRequiredChild("Card/TargetPage/HighRow/Track") as RectTransform;
+        fluteKeyButtonRoot = FindRequiredChild("Content/Pages/TargetPage/TargetSelect/FluteKeyScroller") as RectTransform;
+        targetTongueFiveButton = FindRequiredButton("Content/Pages/TargetPage/TargetSelect/ToneFiveButton");
+        targetTongueTwoButton = FindRequiredButton("Content/Pages/TargetPage/TargetSelect/ToneTwoButton");
+        lowRow = FindRequiredChild("Content/Pages/TargetPage/TargetSelect/LowRow/Track") as RectTransform;
+        midRow = FindRequiredChild("Content/Pages/TargetPage/TargetSelect/MidRow/Track") as RectTransform;
+        highRow = FindRequiredChild("Content/Pages/TargetPage/TargetSelect/HighRow/Track") as RectTransform;
 
-        FindRequiredButton("Card/BackButton").onClick.AddListener(HandleBack);
+        FindRequiredButton("Content/BackButton").onClick.AddListener(HandleBack);
         listeningTabButton.onClick.AddListener(ShowListeningMode);
         targetTabButton.onClick.AddListener(ShowTargetMode);
 
@@ -140,11 +142,11 @@ public sealed class TunerPanelController : MonoBehaviour
 
         ApplyRuntimeFont();
         ConfigureLegacyGaugeLayout();
-        BuildListeningUi();
+        BindListeningUi();
         SetupFluteKeyButtons();
-        BindRow("Card/TargetPage/LowRow/Track", lowOptionButtons, lowTopLabels, lowBottomLabels, RegisterBand.Low);
-        BindRow("Card/TargetPage/MidRow/Track", midOptionButtons, midTopLabels, midBottomLabels, RegisterBand.Mid);
-        BindRow("Card/TargetPage/HighRow/Track", highOptionButtons, highTopLabels, highBottomLabels, RegisterBand.High);
+        BindRow("Content/Pages/TargetPage/TargetSelect/LowRow/Track", lowOptionButtons, lowTopLabels, lowBottomLabels, RegisterBand.Low);
+        BindRow("Content/Pages/TargetPage/TargetSelect/MidRow/Track", midOptionButtons, midTopLabels, midBottomLabels, RegisterBand.Mid);
+        BindRow("Content/Pages/TargetPage/TargetSelect/HighRow/Track", highOptionButtons, highTopLabels, highBottomLabels, RegisterBand.High);
 
         RefreshTargetOptions();
         RefreshSourceToggleUi();
@@ -361,13 +363,19 @@ public sealed class TunerPanelController : MonoBehaviour
 
     private void UpdateGauge(float centsOffset, Color color)
     {
+        float clamped = Mathf.Clamp(centsOffset, -50f, 50f);
+        float angle = Mathf.Lerp(90f, -90f, Mathf.InverseLerp(-50f, 50f, clamped));
+        UpdateGaugeNeedle(listeningNeedlePivot, angle, color);
+        UpdateGaugeNeedle(targetNeedlePivot, angle, color);
+    }
+
+    private static void UpdateGaugeNeedle(RectTransform needlePivot, float angle, Color color)
+    {
         if (needlePivot == null)
         {
             return;
         }
 
-        float clamped = Mathf.Clamp(centsOffset, -50f, 50f);
-        float angle = Mathf.Lerp(90f, -90f, Mathf.InverseLerp(-50f, 50f, clamped));
         needlePivot.localEulerAngles = new Vector3(0f, 0f, angle);
 
         Image needle = needlePivot.Find("Needle")?.GetComponent<Image>();
@@ -376,14 +384,38 @@ public sealed class TunerPanelController : MonoBehaviour
         {
             needle.color = color;
         }
+
         if (knob != null)
         {
             knob.color = color;
         }
     }
 
-    private void BuildListeningUi()
+    private void BindListeningUi()
     {
+        listeningRoot = FindRequiredChild("Content/Pages/ListeningPage") as RectTransform;
+        keyScrollerContent = FindRequiredChild("Content/Pages/ListeningPage/TopControls/KeyScroller/Viewport/Content") as RectTransform;
+        tongueFiveButton = FindRequiredButton("Content/Pages/ListeningPage/TopControls/TongueFive");
+        tongueTwoButton = FindRequiredButton("Content/Pages/ListeningPage/TopControls/TongueTwo");
+        tongueFiveLabel = FindLabel("Content/Pages/ListeningPage/TopControls/TongueFive/Label");
+        tongueTwoLabel = FindLabel("Content/Pages/ListeningPage/TopControls/TongueTwo/Label");
+        listeningTitleLabel = FindLabel("Content/Pages/ListeningPage/ListeningTitle");
+
+        registerSummary.Clear();
+        BindRegisterCard(RegisterBand.Low, "Content/Pages/ListeningPage/SummaryRow/LowCard");
+        BindRegisterCard(RegisterBand.Mid, "Content/Pages/ListeningPage/SummaryRow/MidCard");
+        BindRegisterCard(RegisterBand.High, "Content/Pages/ListeningPage/SummaryRow/HighCard");
+
+        trailView = FindRequiredChild("Content/Pages/ListeningPage/GraphCard/GraphViewport").GetComponent<ListeningPitchTrailView>();
+        if (trailView == null)
+        {
+            throw new MissingComponentException("Missing ListeningPitchTrailView on 'Content/Pages/ListeningPage/GraphCard/GraphViewport'.");
+        }
+
+        trailView.Configure(uiFont);
+        BuildListeningKeyButtons();
+        return;
+
         RectTransform page = listeningPage.GetComponent<RectTransform>();
         listeningRoot = CreateRect("ListeningRoot", page, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
 
@@ -438,6 +470,28 @@ public sealed class TunerPanelController : MonoBehaviour
 
     private void BuildListeningKeyButtons()
     {
+        keyButtons.Clear();
+        keyButtonLabels.Clear();
+
+        for (int i = 0; i < keyScrollerContent.childCount; i++)
+        {
+            Transform child = keyScrollerContent.GetChild(i);
+            Button button = child.GetComponent<Button>();
+            TextMeshProUGUI label = child.Find("Label")?.GetComponent<TextMeshProUGUI>();
+            if (button == null || label == null)
+            {
+                continue;
+            }
+
+            int keyIndex = i;
+            button.onClick.RemoveAllListeners();
+            button.onClick.AddListener(() => SelectFluteKey(keyIndex));
+            keyButtons.Add(button);
+            keyButtonLabels.Add(label);
+        }
+
+        return;
+
         for (int i = 0; i < keyScrollerContent.childCount; i++)
         {
             Destroy(keyScrollerContent.GetChild(i).gameObject);
@@ -485,6 +539,18 @@ public sealed class TunerPanelController : MonoBehaviour
         tongueTwoLabel.color = five ? softTextColor : new Color(0.12f, 0.18f, 0.16f, 1f);
     }
 
+    private void BindRegisterCard(RegisterBand band, string path)
+    {
+        RegisterSummaryUi ui = new RegisterSummaryUi
+        {
+            Card = FindRequiredChild(path).GetComponent<Image>(),
+            Title = FindLabel($"{path}/Title"),
+            Main = FindLabel($"{path}/Main"),
+            Detail = FindLabel($"{path}/Detail"),
+        };
+        registerSummary[band] = ui;
+    }
+
     private void CreateRegisterCard(RectTransform parent, RegisterBand band, int index)
     {
         RectTransform cardRect = CreatePanel($"{band}Card", parent, new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(0f, 0.5f), new Vector2(index * 246f, 0f), new Vector2(228f, 120f), dimCardColor);
@@ -504,6 +570,43 @@ public sealed class TunerPanelController : MonoBehaviour
         {
             return;
         }
+
+        fluteKeyButtonContent = FindRequiredChild("Content/Pages/TargetPage/TargetSelect/FluteKeyScroller/Viewport/Content") as RectTransform;
+        ScrollRect existingScrollRect = fluteKeyButtonRoot.GetComponent<ScrollRect>();
+        if (existingScrollRect != null)
+        {
+            existingScrollRect.horizontal = true;
+            existingScrollRect.vertical = false;
+            existingScrollRect.movementType = ScrollRect.MovementType.Clamped;
+            existingScrollRect.inertia = true;
+            existingScrollRect.scrollSensitivity = 24f;
+            existingScrollRect.viewport = FindRequiredChild("Content/Pages/TargetPage/TargetSelect/FluteKeyScroller/Viewport") as RectTransform;
+            existingScrollRect.content = fluteKeyButtonContent;
+            existingScrollRect.horizontalScrollbar = null;
+            existingScrollRect.verticalScrollbar = null;
+        }
+
+        fluteKeyButtons.Clear();
+        fluteKeyButtonLabels.Clear();
+
+        for (int i = 0; i < fluteKeyButtonContent.childCount; i++)
+        {
+            Transform child = fluteKeyButtonContent.GetChild(i);
+            Button button = child.GetComponent<Button>();
+            TextMeshProUGUI label = child.Find("Label")?.GetComponent<TextMeshProUGUI>();
+            if (button == null || label == null)
+            {
+                continue;
+            }
+
+            int keyIndex = i;
+            button.onClick.RemoveAllListeners();
+            button.onClick.AddListener(() => SelectFluteKey(keyIndex));
+            fluteKeyButtons.Add(button);
+            fluteKeyButtonLabels.Add(label);
+        }
+
+        return;
 
         IReadOnlyList<string> fluteLabels = BambooFluteTargetLibrary.GetFluteKeyLabels();
         Button templateButton = FindTemplateFluteKeyButton();
@@ -891,11 +994,9 @@ public sealed class TunerPanelController : MonoBehaviour
 
     private void ConfigureLegacyGaugeLayout()
     {
-        RectTransform gauge = FindRequiredChild("Card/Gauge") as RectTransform;
-        if (gauge != null)
+        if (uiFont == null)
         {
-            gauge.anchoredPosition = new Vector2(0f, -246f);
-            gauge.sizeDelta = new Vector2(600f, 248f);
+            return;
         }
 
         noteLabel.font = uiFont;
@@ -907,42 +1008,6 @@ public sealed class TunerPanelController : MonoBehaviour
         currentNoteNameLabel.font = uiFont;
         currentFrequencyLabel.font = uiFont;
         registerHintLabel.font = uiFont;
-
-        SetTextRect(noteLabel.rectTransform, new Vector2(0f, -424f), new Vector2(220f, 76f));
-        noteLabel.fontSize = 58f;
-        noteLabel.alignment = TextAlignmentOptions.Center;
-
-        SetTextRect(hintLabel.rectTransform, new Vector2(0f, -482f), new Vector2(260f, 42f));
-        hintLabel.fontSize = 30f;
-        hintLabel.alignment = TextAlignmentOptions.Center;
-
-        SetTextRect(registerHintLabel.rectTransform, new Vector2(0f, -520f), new Vector2(420f, 30f));
-        registerHintLabel.fontSize = 20f;
-        registerHintLabel.alignment = TextAlignmentOptions.Center;
-
-        SetTextRect(frequencyLabel.rectTransform, new Vector2(36f, -556f), new Vector2(260f, 26f), new Vector2(0f, 1f));
-        frequencyLabel.fontSize = 20f;
-        frequencyLabel.alignment = TextAlignmentOptions.Left;
-
-        SetTextRect(centsLabel.rectTransform, new Vector2(-36f, -556f), new Vector2(260f, 26f), new Vector2(1f, 1f));
-        centsLabel.fontSize = 20f;
-        centsLabel.alignment = TextAlignmentOptions.Right;
-
-        SetTextRect(targetLabel.rectTransform, new Vector2(36f, -618f), new Vector2(300f, 26f), new Vector2(0f, 1f));
-        targetLabel.fontSize = 20f;
-        targetLabel.alignment = TextAlignmentOptions.Left;
-
-        SetTextRect(currentNoteNameLabel.rectTransform, new Vector2(-36f, -618f), new Vector2(300f, 26f), new Vector2(1f, 1f));
-        currentNoteNameLabel.fontSize = 20f;
-        currentNoteNameLabel.alignment = TextAlignmentOptions.Right;
-
-        SetTextRect(targetFrequencyLabel.rectTransform, new Vector2(36f, -646f), new Vector2(320f, 24f), new Vector2(0f, 1f));
-        targetFrequencyLabel.fontSize = 18f;
-        targetFrequencyLabel.alignment = TextAlignmentOptions.Left;
-
-        SetTextRect(currentFrequencyLabel.rectTransform, new Vector2(-36f, -646f), new Vector2(320f, 24f), new Vector2(1f, 1f));
-        currentFrequencyLabel.fontSize = 18f;
-        currentFrequencyLabel.alignment = TextAlignmentOptions.Right;
     }
 
     private void SetTextRect(RectTransform rect, Vector2 anchoredPosition, Vector2 size, Vector2? pivotOverride = null)
@@ -957,7 +1022,7 @@ public sealed class TunerPanelController : MonoBehaviour
 
     private void EnsureSourceToggleButton()
     {
-        Transform existing = transform.Find("Card/SourceToggleButton");
+        Transform existing = transform.Find("Content/SourceToggleButton");
         if (existing != null)
         {
             sourceToggleButton = existing.GetComponent<Button>();
@@ -991,7 +1056,7 @@ public sealed class TunerPanelController : MonoBehaviour
             return;
         }
 
-        RectTransform card = FindRequiredChild("Card") as RectTransform;
+        RectTransform card = FindRequiredChild("Content") as RectTransform;
         GameObject buttonGo = new GameObject("SourceToggleButton", typeof(RectTransform), typeof(Image), typeof(Button));
         buttonGo.transform.SetParent(card, false);
 
