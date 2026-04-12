@@ -1,6 +1,9 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+#if UNITY_ANDROID && !UNITY_EDITOR
+using UnityEngine.Android;
+#endif
 
 public readonly struct PitchFrame
 {
@@ -40,6 +43,7 @@ public sealed class MicrophonePitchTracker : MonoBehaviour
     [SerializeField] private int smoothingWindow = 5;
     [SerializeField] private int maxSubharmonicDivisor = 4;
     [SerializeField] private float candidateSelectionTolerance = 0.92f;
+    [SerializeField] private float microphoneInitializationTimeoutSeconds = 8f;
 
     private readonly Queue<float> smoothedFrequencies = new Queue<float>();
 
@@ -50,7 +54,7 @@ public sealed class MicrophonePitchTracker : MonoBehaviour
     private int outputSampleRate;
     private int effectiveSampleRate;
     private bool microphoneReady;
-    private string microphoneStatus = "检测源初始化中";
+    private string microphoneStatus = "Input: microphone initializing";
     private string activeDeviceName;
 
     public PitchFrame CurrentFrame { get; private set; }
@@ -66,44 +70,48 @@ public sealed class MicrophonePitchTracker : MonoBehaviour
         UpdateStatusText();
 
         yield return RequestMicrophoneAccess();
-        if (!Application.HasUserAuthorization(UserAuthorization.Microphone))
+        if (!HasMicrophoneAuthorization())
         {
             UpdateStatusText();
             yield break;
         }
 
-        if (Microphone.devices.Length == 0)
+        yield return StartMicrophoneRecording();
+        if (!microphoneReady)
         {
             UpdateStatusText();
             yield break;
         }
 
-        activeDeviceName = Microphone.devices[0];
-        microphoneClip = Microphone.Start(activeDeviceName, true, 1, requestedSampleRate);
-        float timeout = Time.realtimeSinceStartup + 3f;
-        while (Microphone.GetPosition(activeDeviceName) <= 0 && Time.realtimeSinceStartup < timeout)
-        {
-            yield return null;
-        }
-
-        if (Microphone.GetPosition(activeDeviceName) <= 0)
-        {
-            UpdateStatusText();
-            yield break;
-        }
-
-        effectiveSampleRate = microphoneClip.frequency > 0 ? microphoneClip.frequency : requestedSampleRate;
-        microphoneReady = true;
         ConfigureDetectorForCurrentSource();
         UpdateStatusText();
     }
 
-    private IEnumerator RequestMicrophoneAccess()
+private IEnumerator RequestMicrophoneAccess()
     {
+#if UNITY_ANDROID && !UNITY_EDITOR
+        if (Permission.HasUserAuthorizedPermission(Permission.Microphone))
+        {
+            yield break;
+        }
+
+        bool finished = false;
+        PermissionCallbacks callbacks = new PermissionCallbacks();
+        callbacks.PermissionGranted += _ => finished = true;
+        callbacks.PermissionDenied += _ => finished = true;
+        Permission.RequestUserPermission(Permission.Microphone, callbacks);
+
+        float timeout = Time.realtimeSinceStartup + 10f;
+        while (!finished && Time.realtimeSinceStartup < timeout)
+        {
+            yield return null;
+        }
+#else
         if (!Application.HasUserAuthorization(UserAuthorization.Microphone))
         {
             yield return Application.RequestUserAuthorization(UserAuthorization.Microphone);
         }
+#endif
     }
 
     private void Update()
@@ -156,10 +164,7 @@ public sealed class MicrophonePitchTracker : MonoBehaviour
 
     private void OnDisable()
     {
-        if (microphoneClip != null && !string.IsNullOrEmpty(activeDeviceName) && Microphone.IsRecording(activeDeviceName))
-        {
-            Microphone.End(activeDeviceName);
-        }
+        StopMicrophoneRecording();
     }
 
     private bool TryReadInputSamples()
@@ -205,29 +210,124 @@ public sealed class MicrophonePitchTracker : MonoBehaviour
     {
         if (inputSource == PitchInputSource.Playback)
         {
-            microphoneStatus = $"检测源: 播放检测 ({outputSampleRate} Hz)";
+            microphoneStatus = $"Input: playback ({outputSampleRate} Hz)";
             return;
         }
 
         if (microphoneReady)
         {
-            microphoneStatus = $"检测源: 麦克风 {activeDeviceName} ({effectiveSampleRate} Hz)";
+            string deviceLabel = string.IsNullOrEmpty(activeDeviceName) ? "default device" : activeDeviceName;
+            microphoneStatus = $"Input: microphone {deviceLabel} ({effectiveSampleRate} Hz)";
             return;
         }
 
-        if (!Application.HasUserAuthorization(UserAuthorization.Microphone))
+        if (!HasMicrophoneAuthorization())
         {
-            microphoneStatus = "检测源: 麦克风未授权（可切到播放检测）";
+            microphoneStatus = "Input: microphone permission not granted";
             return;
         }
 
         if (Microphone.devices.Length == 0)
         {
-            microphoneStatus = "检测源: 没有可用麦克风（可切到播放检测）";
+            microphoneStatus = "Input: no microphone device detected";
             return;
         }
 
-        microphoneStatus = "检测源: 麦克风初始化中";
+        microphoneStatus = "Input: microphone initializing";
+    }
+
+    private bool HasMicrophoneAuthorization()
+    {
+#if UNITY_ANDROID && !UNITY_EDITOR
+        return Permission.HasUserAuthorizedPermission(Permission.Microphone);
+#else
+        return Application.HasUserAuthorization(UserAuthorization.Microphone);
+#endif
+    }
+
+    private IEnumerator StartMicrophoneRecording()
+    {
+        StopMicrophoneRecording();
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        // Some Android devices report the mic slightly late after runtime permission is granted.
+        yield return new WaitForSecondsRealtime(0.25f);
+#endif
+
+        if (Microphone.devices.Length == 0)
+        {
+            microphoneReady = false;
+            yield break;
+        }
+
+        string preferredDevice = Microphone.devices[0];
+        int preferredRate = ResolveRequestedSampleRate(preferredDevice);
+        yield return TryStartMicrophone(preferredDevice, preferredRate);
+
+        if (!microphoneReady)
+        {
+            yield return TryStartMicrophone(null, requestedSampleRate);
+        }
+    }
+
+    private IEnumerator TryStartMicrophone(string deviceName, int sampleRate)
+    {
+        activeDeviceName = deviceName;
+        microphoneClip = Microphone.Start(deviceName, true, 1, sampleRate);
+        if (microphoneClip == null)
+        {
+            microphoneReady = false;
+            activeDeviceName = null;
+            yield break;
+        }
+
+        float timeout = Time.realtimeSinceStartup + Mathf.Max(1f, microphoneInitializationTimeoutSeconds);
+        while (Microphone.GetPosition(deviceName) <= 0 && Time.realtimeSinceStartup < timeout)
+        {
+            yield return null;
+        }
+
+        if (Microphone.GetPosition(deviceName) <= 0)
+        {
+            StopMicrophoneRecording();
+            yield break;
+        }
+
+        effectiveSampleRate = microphoneClip.frequency > 0 ? microphoneClip.frequency : sampleRate;
+        microphoneReady = true;
+    }
+
+    private void StopMicrophoneRecording()
+    {
+        if (microphoneClip != null && Microphone.IsRecording(activeDeviceName))
+        {
+            Microphone.End(activeDeviceName);
+        }
+
+        microphoneClip = null;
+        microphoneReady = false;
+        activeDeviceName = null;
+    }
+
+    private int ResolveRequestedSampleRate(string deviceName)
+    {
+        Microphone.GetDeviceCaps(deviceName, out int minFrequency, out int maxFrequency);
+        if (minFrequency == 0 && maxFrequency == 0)
+        {
+            return requestedSampleRate;
+        }
+
+        if (maxFrequency > 0 && requestedSampleRate > maxFrequency)
+        {
+            return maxFrequency;
+        }
+
+        if (minFrequency > 0 && requestedSampleRate < minFrequency)
+        {
+            return minFrequency;
+        }
+
+        return requestedSampleRate;
     }
 
     private float SmoothFrequency(float frequency)

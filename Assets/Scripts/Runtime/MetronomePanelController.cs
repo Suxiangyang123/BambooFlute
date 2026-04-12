@@ -15,9 +15,9 @@ public sealed class MetronomePanelController : MonoBehaviour
     private TextMeshProUGUI toggleButtonLabel;
     private Image toggleButtonImage;
 
-    private void Awake()
+private void Awake()
     {
-        navigationController = FindFirstObjectByType<PracticeNavigationController>();
+        navigationController = FindAnyObjectByType<PracticeNavigationController>();
         metronome = GetComponent<Metronome>();
         if (metronome == null)
         {
